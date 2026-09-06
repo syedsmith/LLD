@@ -45,12 +45,15 @@ class Vehicle {
 }
 
 class Spot{
+    AtomicInteger counter = new AtomicInteger(1);
+    Integer id;
     String name;
     ParkingSize parkingSize;
     Vehicle vehicle;
     Integer floorNumer;
 
     Spot(ParkingSize parkingSize, String name, Integer floorNumer) {
+        this.id = counter.getAndIncrement();
         this.name = name;
         this.parkingSize = parkingSize;
         this.vehicle = null;
