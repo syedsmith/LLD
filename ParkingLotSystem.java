@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 enum VehicleType { CAR, BIKE, TRUCK }
@@ -61,6 +62,9 @@ class Spot{
     }
     public Integer getFloorNumer() {
         return floorNumer;
+    }
+    public Integer getId() {
+        return id;
     }
 }
 
@@ -193,6 +197,22 @@ class Gate implements Runnable {
     GateType gateType;
     GateActionListener gateActionListerner;
 
+    Thread gateThread;
+    AtomicBoolean isThreadStarted = new AtomicBoolean(false);
+
+    public void start(){
+        if(!isThreadStarted.compareAndSet(false,true)){
+            System.out.println("[GATE] Gate Already running " + gateNumber);
+            return;
+        }
+        gateThread = new Thread(this, "Gate-" + gateNumber);
+        gateThread.start();
+    }
+
+    public void shutdown(){
+        gateThread.interrupt();
+    }
+
     Gate(int gateNumber, GateType gateType, GateActionListener gateActionListerner) {
         this.gateNumber = gateNumber;
         this.gateType =  gateType;
@@ -217,12 +237,11 @@ class Gate implements Runnable {
                 Vehicle vehicle = queue.take();
                 System.out.println("[GATE-" + gateNumber + "] dequeue=" + vehicle.licensePlate + ", remaining=" + queue.size());
                 gateLogic.processVehicle(vehicle);
-
             }
-            catch(Exception e){
+            catch(InterruptedException e){
+                Thread.currentThread().interrupt();
                 System.out.println("Facing error in runnable "+ e.toString());
             }
-
         }
     }
 }
@@ -237,9 +256,19 @@ class ParkingLotController implements GateActionListener {
 
     ParkingLotController(){
         for(ParkingSize size : ParkingSize.values()){
-            map.put(size, new ConcurrentSkipListSet<>(Comparator.comparingInt(Spot::getFloorNumer)));
+            map.put(size, new ConcurrentSkipListSet<>(Comparator.comparingInt(Spot::getFloorNumer).thenComparingInt(Spot::getId)));
         }
     }
+
+    public void shutdown(){
+        for(Gate gate : entryGates){
+            gate.shutdown();
+        }
+        for(Gate gate : exitGates){
+            gate.shutdown();
+        }
+    }
+
 
     @Override
     public void addVehicleSpotRegistry(Vehicle vehicle, Spot spot){
@@ -318,6 +347,7 @@ class ParkingLotController implements GateActionListener {
     }
 
     public Spot findSpot(Vehicle vehicle){
+
         for(ParkingSize pSize: map.keySet()){
             if(isParkingSizeCompatible(pSize, vehicle.vehicleType)){
                 System.out.println("[SPOT] Checking " + pSize + ", available=" + map.get(pSize).size());
@@ -357,14 +387,19 @@ class ParkingLotController implements GateActionListener {
         addGate(gate3);
         addGate(gate4);
 
-        Thread  t1 = new Thread(gate1);
-        Thread t2 = new Thread(gate2);
-        Thread t3 = new Thread(gate3);
-        Thread t4 = new Thread(gate4);
-        t1.start();
-        t2.start();
-        t3.start();
-        t4.start();
+        // REPLACED THREAD with LIFECYCLE MANAGEMENT
+        gate1.start();
+        gate2.start();
+        gate3.start();
+        gate4.start();
+//        Thread  t1 = new Thread(gate1);
+//        Thread t2 = new Thread(gate2);
+//        Thread t3 = new Thread(gate3);
+//        Thread t4 = new Thread(gate4);
+//        t1.start();
+//        t2.start();
+//        t3.start();
+//        t4.start();
     }
 
 }
@@ -388,5 +423,10 @@ public class ParkingLotSystem {
         controller.unparkVehicle(v1);
         controller.unparkVehicle(v2);
         System.out.println("[MAIN] requests submitted");
+
+
+        Thread.sleep(10000);
+        // THREAD with LIFECYCLE MANAGEMENT
+        controller.shutdown();
     }
 }
